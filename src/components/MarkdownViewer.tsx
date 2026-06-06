@@ -328,6 +328,7 @@ export default function MarkdownViewer() {
               <SubTree
                 currentPath={currentPath}
                 fileTree={fileTree}
+                files={files}
                 onNavigate={navigateTo}
               />
             )}

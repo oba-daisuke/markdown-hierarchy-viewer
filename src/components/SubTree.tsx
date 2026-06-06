@@ -6,13 +6,18 @@ import { FileNode, findNode } from "@/lib/fileTree";
 interface Props {
   currentPath: string;
   fileTree: FileNode[];
+  files: Map<string, string>;
   onNavigate: (path: string) => void;
 }
 
-export default function SubTree({ currentPath, fileTree, onNavigate }: Props) {
+export default function SubTree({
+  currentPath,
+  fileTree,
+  files,
+  onNavigate,
+}: Props) {
   if (fileTree.length === 0) return null;
 
-  // Parent directory of the current page
   const isVirtual = currentPath.endsWith("/");
   const cleanPath = isVirtual ? currentPath.slice(0, -1) : currentPath;
   const dirPath = cleanPath.includes("/")
@@ -24,9 +29,7 @@ export default function SubTree({ currentPath, fileTree, onNavigate }: Props) {
 
   if (children.length === 0) return null;
 
-  const dirLabel = dirPath
-    ? dirPath.split("/").pop() + "/"
-    : "ルート/";
+  const dirLabel = dirPath ? dirPath.split("/").pop() + "/" : "ルート/";
 
   return (
     <section className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700 not-prose">
@@ -39,8 +42,8 @@ export default function SubTree({ currentPath, fileTree, onNavigate }: Props) {
       <TreeNodeList
         nodes={children}
         currentPath={currentPath}
+        files={files}
         onNavigate={onNavigate}
-        ancestorPath={dirPath}
         depth={0}
       />
     </section>
@@ -50,21 +53,21 @@ export default function SubTree({ currentPath, fileTree, onNavigate }: Props) {
 function TreeNodeList({
   nodes,
   currentPath,
+  files,
   onNavigate,
-  ancestorPath,
   depth,
 }: {
   nodes: FileNode[];
   currentPath: string;
+  files: Map<string, string>;
   onNavigate: (path: string) => void;
-  ancestorPath: string;
   depth: number;
 }) {
   return (
     <div
       className={
         depth > 0
-          ? "ml-4 border-l-2 border-gray-100 dark:border-gray-700 pl-2 space-y-0.5"
+          ? "ml-4 border-l-2 border-gray-100 dark:border-gray-700 pl-3 space-y-0.5"
           : "space-y-0.5"
       }
     >
@@ -73,8 +76,8 @@ function TreeNodeList({
           key={node.path}
           node={node}
           currentPath={currentPath}
+          files={files}
           onNavigate={onNavigate}
-          ancestorPath={ancestorPath}
           depth={depth}
         />
       ))}
@@ -82,20 +85,23 @@ function TreeNodeList({
   );
 }
 
+function fileHeading(content: string): string | null {
+  return content.match(/^#{1,6}\s+(.+)/m)?.[1]?.trim() ?? null;
+}
+
 function TreeNodeItem({
   node,
   currentPath,
+  files,
   onNavigate,
-  ancestorPath,
   depth,
 }: {
   node: FileNode;
   currentPath: string;
+  files: Map<string, string>;
   onNavigate: (path: string) => void;
-  ancestorPath: string;
   depth: number;
 }) {
-  // Auto-expand if this dir is in the active path
   const isOnActivePath =
     currentPath === node.path ||
     currentPath.startsWith(node.path + "/") ||
@@ -104,23 +110,28 @@ function TreeNodeItem({
   const [open, setOpen] = useState(isOnActivePath);
 
   if (node.isDir) {
+    // Use the heading of the directory's README/INDEX as the dir label
+    const indexContent =
+      files.get(`${node.path}/README.md`) ??
+      files.get(`${node.path}/INDEX.md`) ??
+      "";
+    const heading = fileHeading(indexContent);
+
     return (
       <div>
-        <div className="flex items-center gap-1 group">
-          {/* Expand/collapse toggle */}
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setOpen((o) => !o)}
-            className="w-4 h-5 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0 transition-colors"
+            className="w-4 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 shrink-0 transition-colors"
           >
             <span className="text-[10px]">{open ? "▾" : "▸"}</span>
           </button>
-          {/* Directory link */}
           <button
             onClick={() => {
               setOpen(true);
               onNavigate(node.path);
             }}
-            className={`flex-1 text-left text-sm py-0.5 rounded px-1 truncate transition-colors font-medium
+            className={`flex-1 text-left py-0.5 px-1 rounded transition-colors min-w-0
               ${
                 isOnActivePath
                   ? "text-blue-600 dark:text-blue-400"
@@ -128,15 +139,24 @@ function TreeNodeItem({
               }`}
             title={node.path}
           >
-            📁 {node.name}/
+            <span className="flex items-baseline gap-2 min-w-0">
+              <span className="font-medium text-sm shrink-0">
+                📁 {node.name}/
+              </span>
+              {heading && (
+                <span className="text-xs text-gray-400 dark:text-gray-500 truncate">
+                  {heading}
+                </span>
+              )}
+            </span>
           </button>
         </div>
         {open && node.children.length > 0 && (
           <TreeNodeList
             nodes={node.children}
             currentPath={currentPath}
+            files={files}
             onNavigate={onNavigate}
-            ancestorPath={node.path}
             depth={depth + 1}
           />
         )}
@@ -144,26 +164,37 @@ function TreeNodeItem({
     );
   }
 
-  const isCurrentFile =
-    currentPath === node.path ||
-    // also match when viewing virtual dir but this file is the "active" one
-    false;
+  // File: show heading as main label, filename as secondary
+  const content = files.get(node.path) ?? "";
+  const heading = fileHeading(content);
+  const isCurrentFile = currentPath === node.path;
 
   return (
     <button
       onClick={() => onNavigate(node.path)}
-      className={`w-full text-left flex items-center gap-1.5 text-sm py-0.5 px-1 rounded truncate transition-colors
+      className={`w-full text-left flex items-baseline gap-2 py-0.5 px-1 rounded transition-colors min-w-0
         ${
           isCurrentFile
-            ? "bg-blue-50 text-blue-700 font-medium dark:bg-blue-900/30 dark:text-blue-300"
-            : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800"
+            ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+            : "text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800"
         }`}
       title={node.path}
     >
-      <span className="text-gray-400 shrink-0 text-xs">📄</span>
-      <span className="truncate">{node.name}</span>
+      <span className="text-gray-400 shrink-0 text-xs leading-5">📄</span>
+      <span className="flex items-baseline gap-2 min-w-0 flex-1">
+        <span
+          className={`text-sm truncate ${isCurrentFile ? "font-medium" : ""}`}
+        >
+          {heading ?? node.name}
+        </span>
+        {heading && (
+          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+            {node.name}
+          </span>
+        )}
+      </span>
       {isCurrentFile && (
-        <span className="ml-auto text-[10px] text-blue-400 shrink-0">← 現在</span>
+        <span className="text-[10px] text-blue-400 shrink-0">← 現在</span>
       )}
     </button>
   );
