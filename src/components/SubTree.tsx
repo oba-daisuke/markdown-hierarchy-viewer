@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { FileNode, findNode } from "@/lib/fileTree";
 import { extractFlatHeadings, FlatHeading } from "@/lib/markdown";
+import DiagramView from "./DiagramView";
+
+type ViewMode = "list" | "diagram";
 
 interface Props {
   currentPath: string;
@@ -19,6 +22,8 @@ export default function SubTree({
   onNavigate,
   onNavigateToAnchor,
 }: Props) {
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+
   if (fileTree.length === 0) return null;
 
   const isVirtual = currentPath.endsWith("/");
@@ -40,15 +45,51 @@ export default function SubTree({
         <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">
           {dirLabel} の構成
         </span>
+        {/* View mode toggle */}
+        <div className="ml-auto flex rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs">
+          <button
+            onClick={() => setViewMode("list")}
+            className={`px-2.5 py-1 transition-colors ${
+              viewMode === "list"
+                ? "bg-blue-600 text-white"
+                : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+          >
+            リスト
+          </button>
+          <button
+            onClick={() => setViewMode("diagram")}
+            className={`px-2.5 py-1 transition-colors border-l border-gray-200 dark:border-gray-700 ${
+              viewMode === "diagram"
+                ? "bg-blue-600 text-white"
+                : "bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+            }`}
+          >
+            図
+          </button>
+        </div>
       </div>
-      <NodeList
-        nodes={children}
-        currentPath={currentPath}
-        files={files}
-        onNavigate={onNavigate}
-        onNavigateToAnchor={onNavigateToAnchor}
-        depth={0}
-      />
+
+      {viewMode === "diagram" ? (
+        <DiagramView
+          dirPath={dirPath}
+          dirLabel={dirLabel}
+          children={children}
+          currentPath={currentPath}
+          files={files}
+          onNavigate={onNavigate}
+          onNavigateToAnchor={onNavigateToAnchor}
+        />
+      ) : (
+        <NodeList
+          nodes={children}
+          currentPath={currentPath}
+          files={files}
+          onNavigate={onNavigate}
+          onNavigateToAnchor={onNavigateToAnchor}
+          depth={0}
+        />
+      )}
     </section>
   );
 }
