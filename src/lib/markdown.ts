@@ -9,18 +9,20 @@ import { visit } from "unist-util-visit";
 import GithubSlugger from "github-slugger";
 import type { Root } from "mdast";
 
-export interface HeadingNode {
-  id: string;
-  text: string;
+export interface FlatHeading {
   level: number;
+  text: string;
+  id: string;
+}
+
+export interface HeadingNode extends FlatHeading {
   children: HeadingNode[];
 }
 
-export function extractHeadings(markdown: string): HeadingNode[] {
+export function extractFlatHeadings(markdown: string): FlatHeading[] {
   const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as Root;
   const slugger = new GithubSlugger();
-
-  const flat: { level: number; text: string; id: string }[] = [];
+  const flat: FlatHeading[] = [];
 
   visit(tree, "heading", (node) => {
     const text = node.children
@@ -29,7 +31,11 @@ export function extractHeadings(markdown: string): HeadingNode[] {
     flat.push({ level: node.depth, text, id: slugger.slug(text) });
   });
 
-  return buildTree(flat);
+  return flat;
+}
+
+export function extractHeadings(markdown: string): HeadingNode[] {
+  return buildTree(extractFlatHeadings(markdown));
 }
 
 function buildTree(

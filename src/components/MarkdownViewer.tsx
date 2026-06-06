@@ -66,6 +66,8 @@ export default function MarkdownViewer() {
   const [editorValue, setEditorValue] = useState(SAMPLE.content);
   const [loadedLabel, setLoadedLabel] = useState<string | undefined>();
 
+  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+
   const contentRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
@@ -82,6 +84,18 @@ export default function MarkdownViewer() {
     setActiveId("");
     contentRef.current?.scrollTo({ top: 0 });
   }, [currentContent]);
+
+  // Scroll to pending anchor after HTML is injected into DOM
+  useEffect(() => {
+    if (!pendingAnchor) return;
+    const id = pendingAnchor;
+    setPendingAnchor(null);
+    // rAF ensures the DOM has been updated with the new html
+    requestAnimationFrame(() => {
+      const el = contentRef.current?.querySelector(`#${CSS.escape(id)}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [html, pendingAnchor]);
 
   // Keep editor in sync with current file (not virtual pages)
   useEffect(() => {
@@ -118,6 +132,25 @@ export default function MarkdownViewer() {
       setActiveId(id);
     }
   }
+
+  // Navigate to a file and scroll to a specific heading anchor
+  const navigateToAnchor = useCallback((path: string, anchorId: string) => {
+    const f = filesRef.current;
+    const isSamePage = path === (currentPath.endsWith("/") ? "" : currentPath);
+    if (isSamePage) {
+      // Already on the file — just scroll
+      const el = contentRef.current?.querySelector(`#${CSS.escape(anchorId)}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      // Navigate first, scroll after render
+      setPendingAnchor(anchorId);
+      if (f.has(path)) {
+        setCurrentPath(path);
+        setCurrentContent(f.get(path)!);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath]);
 
   // Core navigation: accepts file path, directory path, or dir path with trailing "/"
   const navigateTo = useCallback((path: string) => {
@@ -330,6 +363,7 @@ export default function MarkdownViewer() {
                 fileTree={fileTree}
                 files={files}
                 onNavigate={navigateTo}
+                onNavigateToAnchor={navigateToAnchor}
               />
             )}
           </div>
