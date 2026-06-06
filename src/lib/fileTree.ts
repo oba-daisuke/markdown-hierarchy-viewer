@@ -81,6 +81,53 @@ export function findDefaultFile(
   return null;
 }
 
+export function findNode(tree: FileNode[], path: string): FileNode | null {
+  if (!path) return null;
+  const parts = path.split("/").filter(Boolean);
+  let nodes = tree;
+  let found: FileNode | null = null;
+  for (const part of parts) {
+    found = nodes.find((n) => n.name === part) ?? null;
+    if (!found) return null;
+    nodes = found.children;
+  }
+  return found;
+}
+
+export function generateDirPage(
+  dirPath: string,
+  files: Map<string, string>,
+  tree: FileNode[]
+): string {
+  const name = dirPath ? dirPath.split("/").pop()! : "ルート";
+  const node = dirPath ? findNode(tree, dirPath) : null;
+  const children = node?.children ?? tree;
+
+  const dirs = children.filter((n) => n.isDir);
+  const mdFiles = children.filter((n) => !n.isDir);
+
+  let md = `# ${name}/\n\n`;
+
+  if (dirs.length > 0) {
+    md += `## 📁 サブディレクトリ\n\n`;
+    for (const d of dirs) {
+      md += `- [${d.name}/](${d.name}/)\n`;
+    }
+    md += "\n";
+  }
+
+  if (mdFiles.length > 0) {
+    md += `## 📄 ファイル\n\n`;
+    for (const f of mdFiles) {
+      const content = files.get(f.path) ?? "";
+      const title = content.match(/^#+\s+(.+)/m)?.[1]?.trim() ?? f.name;
+      md += `- [${title}](${f.name})\n`;
+    }
+  }
+
+  return md;
+}
+
 export async function readDirectoryEntries(
   entry: FileSystemDirectoryEntry
 ): Promise<FileEntry[]> {

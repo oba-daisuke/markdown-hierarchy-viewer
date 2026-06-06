@@ -8,6 +8,7 @@ import {
   buildFileTree,
   resolveRelativePath,
   findDefaultFile,
+  generateDirPage,
 } from "@/lib/fileTree";
 import TableOfContents from "./TableOfContents";
 import FileTree from "./FileTree";
@@ -21,14 +22,14 @@ const SAMPLE: FileEntry = {
 
 ## 概要
 
-このディレクトリは仕事のプロジェクトを体系的に管理するための Markdown 階層です。
+このビューアは階層的な Markdown ディレクトリをブラウザで閲覧するツールです。
+左上の **フォルダ** ボタンでフォルダを読み込んでください。
 
-## 構成
+## 使い方
 
-| セクション | 説明 |
-|-----------|------|
-| projects/ | 進行中・完了プロジェクト一覧 |
-| weekly/ | 週次レポート・振り返り |
+1. 「フォルダ」ボタンから Markdown ディレクトリを選択
+2. 左サイドバーのファイルツリーをクリックしてページ遷移
+3. ディレクトリ名をクリックすると INDEX / README に移動
 
 ## 進行中プロジェクト
 
@@ -41,24 +42,7 @@ const SAMPLE: FileEntry = {
 ## 今週のフォーカス
 
 - [ ] Q3 ロードマップ最終確認
-- [ ] 顧客提案書レビュー
 - [x] チームスプリント計画
-
-## コードブロック例
-
-\`\`\`typescript
-function greet(name: string): string {
-  return \`Hello, \${name}!\`;
-}
-\`\`\`
-
-### ネスト見出し
-
-#### h4 レベル
-
-##### h5 レベル
-
-###### h6 レベルまで対応
 `,
 };
 
@@ -69,7 +53,10 @@ export default function MarkdownViewer() {
     new Map([[SAMPLE.path, SAMPLE.content]])
   );
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
+  // currentPath can be a file path ("a/b.md") or a virtual dir path ("a/b/")
   const [currentPath, setCurrentPath] = useState(SAMPLE.path);
+  // Content to render: either from files map (file) or generated (virtual dir page)
+  const [currentContent, setCurrentContent] = useState(SAMPLE.content);
   const [html, setHtml] = useState("");
   const [headings, setHeadings] = useState<HeadingNode[]>([]);
   const [activeId, setActiveId] = useState("");
@@ -81,14 +68,26 @@ export default function MarkdownViewer() {
   const contentRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
-  // Render current file
+  // filesRef / fileTreeRef: for use inside callbacks without stale closures
+  const filesRef = useRef(files);
+  const fileTreeRef = useRef(fileTree);
+  useEffect(() => { filesRef.current = files; }, [files]);
+  useEffect(() => { fileTreeRef.current = fileTree; }, [fileTree]);
+
+  // Render whenever content changes
   useEffect(() => {
-    const content = files.get(currentPath) ?? "";
-    renderMarkdown(content).then(setHtml);
-    setHeadings(extractHeadings(content));
-    setEditorValue(content);
+    renderMarkdown(currentContent).then(setHtml);
+    setHeadings(extractHeadings(currentContent));
     setActiveId("");
-  }, [currentPath, files]);
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [currentContent]);
+
+  // Keep editor in sync with current file (not virtual pages)
+  useEffect(() => {
+    if (!currentPath.endsWith("/")) {
+      setEditorValue(currentContent);
+    }
+  }, [currentPath, currentContent]);
 
   // Scroll-spy for active heading
   useEffect(() => {
@@ -98,7 +97,6 @@ export default function MarkdownViewer() {
     const els = contentRef.current.querySelectorAll(
       "h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]"
     );
-
     observerRef.current = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -108,7 +106,6 @@ export default function MarkdownViewer() {
       },
       { rootMargin: "-10% 0px -80% 0px" }
     );
-
     els.forEach((el) => observerRef.current!.observe(el));
     return () => observerRef.current?.disconnect();
   }, [html]);
@@ -121,92 +118,94 @@ export default function MarkdownViewer() {
     }
   }
 
-  function navigateTo(path: string) {
-    if (files.has(path)) {
-      setCurrentPath(path);
-      contentRef.current?.scrollTo({ top: 0 });
-    }
-  }
+  // Core navigation: accepts file path, directory path, or dir path with trailing "/"
+  const navigateTo = useCallback((path: string) => {
+    const f = filesRef.current;
+    const t = fileTreeRef.current;
 
-  // Intercept clicks inside rendered markdown
+    // Normalise: strip trailing slash for lookup
+    const cleanPath = path.endsWith("/") ? path.slice(0, -1) : path;
+
+    // 1. Exact file match
+    if (f.has(cleanPath)) {
+      setCurrentPath(cleanPath);
+      setCurrentContent(f.get(cleanPath)!);
+      return;
+    }
+
+    // 2. Try as directory → look for README / INDEX
+    const defaultFile = findDefaultFile(f, cleanPath || undefined);
+    if (defaultFile) {
+      setCurrentPath(defaultFile);
+      setCurrentContent(f.get(defaultFile)!);
+      return;
+    }
+
+    // 3. No README/INDEX → generate virtual directory listing
+    const virtualPath = cleanPath ? cleanPath + "/" : "/";
+    const content = generateDirPage(cleanPath, f, t);
+    setCurrentPath(virtualPath);
+    setCurrentContent(content);
+  }, []);
+
+  // Intercept link clicks inside rendered markdown
   const handleContentClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const anchor = (e.target as HTMLElement).closest("a");
       if (!anchor) return;
-
       const href = anchor.getAttribute("href");
       if (!href) return;
 
-      // External links: open in new tab (let default handle)
       if (href.startsWith("http") || href.startsWith("mailto:")) return;
 
       e.preventDefault();
 
-      // Anchor-only link: scroll within page
       if (href.startsWith("#")) {
-        const id = href.slice(1);
-        const el = contentRef.current?.querySelector(`#${id}`);
+        const el = contentRef.current?.querySelector(href);
         el?.scrollIntoView({ behavior: "smooth" });
         return;
       }
 
-      // Relative link: resolve and navigate
       const resolved = resolveRelativePath(currentPath, href);
-      if (!resolved) return;
-
-      // Try exact match first
-      if (files.has(resolved)) {
-        navigateTo(resolved);
-        return;
-      }
-
-      // Try as directory (INDEX.md / README.md)
-      const found = findDefaultFile(files, resolved);
-      if (found) navigateTo(found);
+      if (resolved !== null) navigateTo(resolved);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentPath, files]
+    [currentPath, navigateTo]
   );
 
   function loadFiles(entries: FileEntry[], label: string) {
     const map = new Map(entries.map((e) => [e.path, e.content]));
+    const tree = buildFileTree(entries);
     setFiles(map);
-    setFileTree(buildFileTree(entries));
+    setFileTree(tree);
     setLoadedLabel(label);
     setSidebarTab("files");
 
     const first = findDefaultFile(map);
-    if (first) setCurrentPath(first);
-  }
-
-  function handleLoadFile(entry: FileEntry) {
-    loadFiles([entry], entry.path);
-  }
-
-  function handleLoadDirectory(entries: FileEntry[]) {
-    // Guess root name from first path
-    const rootName = entries[0]?.path.split("/")[0] ?? "directory";
-    loadFiles(entries, `${rootName}/ (${entries.length} files)`);
+    if (first) {
+      setCurrentPath(first);
+      setCurrentContent(map.get(first)!);
+    }
   }
 
   function handleClear() {
     setFiles(new Map([[SAMPLE.path, SAMPLE.content]]));
     setFileTree([]);
     setCurrentPath(SAMPLE.path);
+    setCurrentContent(SAMPLE.content);
     setLoadedLabel(undefined);
     setSidebarTab("toc");
   }
 
   function applyEditor() {
-    setFiles((prev) => {
-      const next = new Map(prev);
-      next.set(currentPath, editorValue);
-      return next;
-    });
+    const updated = new Map(files);
+    updated.set(currentPath, editorValue);
+    setFiles(updated);
+    setCurrentContent(editorValue);
     setShowEditor(false);
   }
 
   const hasDirectory = fileTree.length > 0;
+  const isVirtualPage = currentPath.endsWith("/");
 
   return (
     <div className="flex flex-col h-screen bg-white dark:bg-gray-900 overflow-hidden">
@@ -218,32 +217,33 @@ export default function MarkdownViewer() {
         <div className="flex-1 min-w-0">
           <MarkdownInput
             loadedInfo={loadedLabel}
-            onLoadFile={handleLoadFile}
-            onLoadDirectory={handleLoadDirectory}
+            onLoadFile={(entry) => loadFiles([entry], entry.path)}
+            onLoadDirectory={(entries) => {
+              const root = entries[0]?.path.split("/")[0] ?? "directory";
+              loadFiles(entries, `${root}/ (${entries.length} files)`);
+            }}
             onClear={handleClear}
           />
         </div>
-        <button
-          onClick={() => setShowEditor((v) => !v)}
-          className={`px-3 py-1.5 rounded text-xs transition-colors shrink-0 ${
-            showEditor
-              ? "bg-blue-600 text-white"
-              : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
-          }`}
-        >
-          {showEditor ? "プレビュー" : "編集"}
-        </button>
+        {!isVirtualPage && (
+          <button
+            onClick={() => setShowEditor((v) => !v)}
+            className={`px-3 py-1.5 rounded text-xs transition-colors shrink-0 ${
+              showEditor
+                ? "bg-blue-600 text-white"
+                : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+            }`}
+          >
+            {showEditor ? "プレビュー" : "編集"}
+          </button>
+        )}
       </header>
 
       {/* Breadcrumb */}
-      {currentPath && (
-        <div className="px-4 py-1 text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 shrink-0 truncate">
-          {currentPath}
-        </div>
-      )}
+      <Breadcrumb path={currentPath} onNavigate={navigateTo} />
 
       {/* Editor */}
-      {showEditor && (
+      {showEditor && !isVirtualPage && (
         <div className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 flex gap-2 shrink-0">
           <textarea
             value={editorValue}
@@ -271,7 +271,6 @@ export default function MarkdownViewer() {
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside className="w-60 shrink-0 flex flex-col border-r border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 overflow-hidden">
-          {/* Tabs */}
           <div className="flex border-b border-gray-200 dark:border-gray-700 shrink-0">
             {hasDirectory && (
               <button
@@ -297,7 +296,6 @@ export default function MarkdownViewer() {
             </button>
           </div>
 
-          {/* Tab content */}
           <div className="flex-1 overflow-y-auto p-2">
             {sidebarTab === "files" && hasDirectory ? (
               <FileTree
@@ -305,23 +303,19 @@ export default function MarkdownViewer() {
                 currentPath={currentPath}
                 onSelect={navigateTo}
               />
+            ) : headings.length > 0 ? (
+              <TableOfContents
+                headings={headings}
+                activeId={activeId}
+                onSelect={scrollToHeading}
+              />
             ) : (
-              <>
-                {headings.length > 0 ? (
-                  <TableOfContents
-                    headings={headings}
-                    activeId={activeId}
-                    onSelect={scrollToHeading}
-                  />
-                ) : (
-                  <p className="text-xs text-gray-400 px-2">見出しがありません</p>
-                )}
-              </>
+              <p className="text-xs text-gray-400 px-2">見出しがありません</p>
             )}
           </div>
         </aside>
 
-        {/* Markdown content */}
+        {/* Content */}
         <main className="flex-1 overflow-y-auto" ref={contentRef}>
           <div
             className="prose prose-slate dark:prose-invert max-w-4xl mx-auto px-8 py-8 prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline prose-code:before:content-none prose-code:after:content-none"
@@ -331,5 +325,57 @@ export default function MarkdownViewer() {
         </main>
       </div>
     </div>
+  );
+}
+
+// ── Breadcrumb ──────────────────────────────────────────────────────────────
+
+function Breadcrumb({
+  path,
+  onNavigate,
+}: {
+  path: string;
+  onNavigate: (path: string) => void;
+}) {
+  if (!path || path === "/") return null;
+
+  // Split path into clickable segments
+  // e.g. "projects/ec-renewal/spec.md" → ["projects", "ec-renewal", "spec.md"]
+  // e.g. "projects/ec-renewal/"         → ["projects", "ec-renewal/"]
+  const isVirtual = path.endsWith("/");
+  const cleanPath = isVirtual ? path.slice(0, -1) : path;
+  const parts = cleanPath.split("/").filter(Boolean);
+
+  return (
+    <nav className="flex items-center gap-0.5 px-4 py-1.5 text-xs border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 shrink-0 overflow-x-auto whitespace-nowrap">
+      <button
+        onClick={() => onNavigate("")}
+        className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 transition-colors"
+      >
+        ルート
+      </button>
+      {parts.map((part, i) => {
+        const isLast = i === parts.length - 1;
+        const segPath = parts.slice(0, i + 1).join("/");
+
+        return (
+          <span key={segPath} className="flex items-center gap-0.5">
+            <span className="text-gray-300 dark:text-gray-600 px-0.5">/</span>
+            {isLast ? (
+              <span className="text-gray-700 dark:text-gray-300 font-medium">
+                {part}{isVirtual ? "/" : ""}
+              </span>
+            ) : (
+              <button
+                onClick={() => onNavigate(segPath)}
+                className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 transition-colors"
+              >
+                {part}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </nav>
   );
 }
