@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { FileNode } from "@/lib/fileTree";
 import { extractFlatHeadings, FlatHeading } from "@/lib/markdown";
 
@@ -83,6 +83,25 @@ export default function DiagramView({
   const maxY = Math.max(...allNodes.map((n) => n.y + n.h));
   const canvasH = maxY + CANVAS_PAD * 2;
 
+  // Auto-scale to fit container width — no scroll
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      setContainerW(entry.contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const scale = containerW > 0 && canvasW > 0
+    ? Math.min(1, containerW / canvasW)
+    : 1;
+  const displayH = Math.ceil(canvasH * scale);
+
   function toggleDir(path: string) {
     setExpandedDirs((prev) => {
       const next = new Set(prev);
@@ -104,9 +123,19 @@ export default function DiagramView({
   }
 
   return (
-    <div className="overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30">
+    <div
+      ref={containerRef}
+      className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 overflow-hidden"
+      style={{ height: displayH || undefined }}
+    >
       <div
-        style={{ width: canvasW, height: canvasH, position: "relative" }}
+        style={{
+          width: canvasW,
+          height: canvasH,
+          position: "relative",
+          transform: scale < 1 ? `scale(${scale})` : undefined,
+          transformOrigin: "top left",
+        }}
       >
         {/* SVG connector lines */}
         <svg

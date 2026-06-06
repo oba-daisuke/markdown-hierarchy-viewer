@@ -352,11 +352,6 @@ export default function MarkdownViewer() {
         {/* Content */}
         <main className="flex-1 overflow-y-auto" ref={contentRef}>
           <div className="max-w-4xl mx-auto px-8 py-8">
-            <div
-              className="prose prose-slate dark:prose-invert prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline prose-code:before:content-none prose-code:after:content-none"
-              dangerouslySetInnerHTML={{ __html: html }}
-              onClick={handleContentClick}
-            />
             {hasDirectory && (
               <SubTree
                 currentPath={currentPath}
@@ -366,6 +361,11 @@ export default function MarkdownViewer() {
                 onNavigateToAnchor={navigateToAnchor}
               />
             )}
+            <div
+              className="prose prose-slate dark:prose-invert prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline prose-code:before:content-none prose-code:after:content-none"
+              dangerouslySetInnerHTML={{ __html: html }}
+              onClick={handleContentClick}
+            />
           </div>
         </main>
       </div>

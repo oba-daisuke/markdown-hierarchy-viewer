@@ -39,7 +39,7 @@ export default function SubTree({
   const dirLabel = dirPath ? dirPath.split("/").pop() + "/" : "ルート/";
 
   return (
-    <section className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700 not-prose">
+    <section className="mb-10 pb-8 border-b border-gray-200 dark:border-gray-700 not-prose">
       <div className="flex items-center gap-2 mb-4">
         <span className="text-base">📂</span>
         <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">
