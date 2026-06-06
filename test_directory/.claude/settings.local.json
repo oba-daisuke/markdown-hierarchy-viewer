@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(///wsl.localhost/Ubuntu/home/daisuke/markdown-hierarchy-viewer/**)",
+      "Bash(dir \"\\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\Ubuntu\\\\\\\\home\\\\\\\\daisuke\\\\\\\\markdown-hierarchy-viewer\\\\\\\\test_directory\")"
+    ]
+  }
+}

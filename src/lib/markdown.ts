@@ -6,6 +6,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeStringify from "rehype-stringify";
 import rehypeSlug from "rehype-slug";
 import { visit } from "unist-util-visit";
+import GithubSlugger from "github-slugger";
 import type { Root } from "mdast";
 
 export interface HeadingNode {
@@ -15,17 +16,9 @@ export interface HeadingNode {
   children: HeadingNode[];
 }
 
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .trim();
-}
-
 export function extractHeadings(markdown: string): HeadingNode[] {
   const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as Root;
+  const slugger = new GithubSlugger();
 
   const flat: { level: number; text: string; id: string }[] = [];
 
@@ -33,7 +26,7 @@ export function extractHeadings(markdown: string): HeadingNode[] {
     const text = node.children
       .map((child) => ("value" in child ? child.value : ""))
       .join("");
-    flat.push({ level: node.depth, text, id: slugify(text) });
+    flat.push({ level: node.depth, text, id: slugger.slug(text) });
   });
 
   return buildTree(flat);
