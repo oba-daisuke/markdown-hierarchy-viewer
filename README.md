@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Markdown Hierarchy Viewer
 
-## Getting Started
+ローカルの Markdown ディレクトリを階層ナビゲーション付きでブラウザ表示する Python Web アプリです。
 
-First, run the development server:
+## 機能
+
+- ファイルツリーサイドバー（ディレクトリの展開・折りたたみ）
+- 目次サイドバー（スクロール連動でアクティブ見出しをハイライト）
+- パンくずナビゲーション
+- シンタックスハイライト付き Markdown レンダリング
+- 同一ディレクトリ内の構成パネル（見出し一覧付き）
+- ディレクトリの自動リスト生成（INDEX.md / README.md がない場合）
+- ダークモード対応（OS 設定に追従）
+
+## セットアップ
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# uv がない場合はインストール
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 依存関係をインストール
+uv sync
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 使い方
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# 指定ディレクトリを開く
+uv run mdview /path/to/your/notes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# ポートを変更する場合
+uv run mdview /path/to/your/notes --port 8080
 
-## Learn More
+# カレントディレクトリを開く
+uv run mdview .
+```
 
-To learn more about Next.js, take a look at the following resources:
+ブラウザで `http://127.0.0.1:8000` を開きます。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## ファイル構成
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+app.py              # FastAPI サーバー本体
+pyproject.toml      # uv プロジェクト定義・依存関係
+templates/
+  viewer.html       # Jinja2 テンプレート
+static/
+  style.css         # スタイルシート（ダークモード対応）
+  app.js            # 最小限の JavaScript（スクロールスパイ・タブ切り替え）
+test_directory/     # 動作確認用サンプル Markdown
+```
 
-## Deploy on Vercel
+## 依存ライブラリ
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| パッケージ | 用途 |
+|---|---|
+| FastAPI + uvicorn | Web サーバー |
+| Jinja2 | HTML テンプレート |
+| markdown | Markdown → HTML 変換 |
+| Pygments | シンタックスハイライト |
