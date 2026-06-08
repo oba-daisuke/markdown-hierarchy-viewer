@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MD Viewer{% if current_path %} – {{ current_path.rstrip('/').split('/')[-1] }}{% endif %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>{{ pygments_css }}</style>
+</head>
+<body>
+
+{# ── Macros ─────────────────────────────────────────────────────────────────── #}
+
+{% macro render_file_tree(nodes, depth=0) %}
+<ul class="tree-list">
+  {% for node in nodes %}
+    {% if node.is_dir %}
+      {% set is_active = current_path == node.path
+                      or current_path.startswith(node.path + '/')
+                      or current_path == node.path + '/' %}
+      <li class="tree-item">
+        <details {% if is_active %}open{% endif %}>
+          <summary class="tree-dir-row{% if is_active %} active{% endif %}" style="padding-left:{{ depth * 14 + 4 }}px">
+            <span class="tree-arrow"></span>
+            <a href="/view?path={{ node.path | q }}" class="tree-dir-link">{{ node.name }}/</a>
+          </summary>
+          {{ render_file_tree(node.children, depth + 1) }}
+        </details>
+      </li>
+    {% else %}
+      {% set is_active = current_path == node.path %}
+      <li class="tree-item">
+        <a href="/view?path={{ node.path | q }}"
+           class="tree-file-link{% if is_active %} active{% endif %}"
+           style="padding-left:{{ depth * 14 + 28 }}px">
+          <span class="tree-dot">·</span>{{ node.name }}
+        </a>
+      </li>
+    {% endif %}
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro render_toc(nodes, depth=0) %}
+<ul class="toc-list">
+  {% for node in nodes %}
+    <li>
+      <a href="#{{ node.id }}"
+         class="toc-link{% if depth == 0 %} toc-root{% endif %}"
+         style="padding-left:{{ depth * 12 + 8 }}px"
+         data-id="{{ node.id }}">
+        <span class="toc-mark">{{ '#' * node.level }}</span>{{ node.text }}
+      </a>
+      {% if node.children %}
+        {{ render_toc(node.children, depth + 1) }}
+      {% endif %}
+    </li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro render_subtree(items, depth=0) %}
+<div class="sub-list{% if depth > 0 %} sub-indent{% endif %}">
+  {% for item in items %}
+    {% if item.type == 'dir' %}
+      <div class="sub-dir{% if item.is_active %} active{% endif %}">
+        <div class="sub-dir-row">
+          {% if item.children %}
+            <button class="sub-toggle" data-expanded="true" onclick="toggleSub(this)">▾</button>
+          {% else %}
+            <span class="sub-toggle-gap"></span>
+          {% endif %}
+          <a href="/view?path={{ item.node.path | q }}" class="sub-dir-link">
+            <span class="sub-icon">📁</span>
+            <span class="sub-name">{{ item.node.name }}/</span>
+            {% if item.dir_heading %}
+              <span class="sub-hint">{{ item.dir_heading }}</span>
+            {% endif %}
+          </a>
+        </div>
+        {% if item.children %}
+          <div class="sub-children">
+            {{ render_subtree(item.children, depth + 1) }}
+          </div>
+        {% endif %}
+      </div>
+    {% else %}
+      {% set hmin = item.headings | map(attribute='level') | min if item.headings else 1 %}
+      <div class="sub-file{% if item.is_current %} current{% endif %}">
+        <div class="sub-file-row">
+          {% if item.headings %}
+            <button class="sub-toggle" data-expanded="{{ 'true' if item.is_current else 'false' }}" onclick="toggleSub(this)">
+              {{ '▾' if item.is_current else '▸' }}
+            </button>
+          {% else %}
+            <span class="sub-toggle-gap"></span>
+          {% endif %}
+          <a href="/view?path={{ item.node.path | q }}" class="sub-file-link">
+            <span class="sub-icon">📄</span>
+            <span class="sub-name">{{ item.first_heading or item.node.name }}</span>
+            {% if item.first_heading %}
+              <span class="sub-hint">{{ item.node.name }}</span>
+            {% endif %}
+            {% if item.is_current %}
+              <span class="sub-current-mark">← 現在</span>
+            {% endif %}
+          </a>
+        </div>
+        {% if item.headings %}
+          <div class="sub-headings{% if not item.is_current %} hidden{% endif %}">
+            {% for h in item.headings %}
+              <a href="/view?path={{ item.node.path | q }}#{{ h.id }}"
+                 class="sub-heading"
+                 style="padding-left:{{ (h.level - hmin) * 12 + 4 }}px">
+                <span class="sub-heading-mark">{{ '#' * h.level }}</span>{{ h.text }}
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{# ── Layout ─────────────────────────────────────────────────────────────────── #}
+
+<div class="layout">
+
+  {# Header #}
+  <header class="header">
+    <a href="/" class="logo">MD Viewer</a>
+    <nav class="breadcrumb" aria-label="breadcrumb">
+      <a href="/view?path=" class="bc-link">{{ root_name }}/</a>
+      {% for seg in breadcrumb %}
+        <span class="bc-sep">/</span>
+        {% if seg.is_last %}
+          <span class="bc-current">{{ seg.name }}</span>
+        {% else %}
+          <a href="/view?path={{ seg.path | q }}" class="bc-link">{{ seg.name }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+  </header>
+
+  {# Body #}
+  <div class="body">
+
+    {# Sidebar #}
+    <aside class="sidebar">
+      <div class="sidebar-tabs" role="tablist">
+        {% if tree %}
+          <button id="tab-files" class="stab active" role="tab" onclick="switchTab('files')">ファイル</button>
+        {% endif %}
+        <button id="tab-toc" class="stab{% if not tree %} active{% endif %}" role="tab" onclick="switchTab('toc')">目次</button>
+      </div>
+
+      <div id="panel-files" class="sidebar-panel{% if not tree %} hidden{% endif %}">
+        {% if tree %}
+          {{ render_file_tree(tree) }}
+        {% endif %}
+      </div>
+
+      <div id="panel-toc" class="sidebar-panel{% if tree %} hidden{% endif %}">
+        {% if heading_tree %}
+          {{ render_toc(heading_tree) }}
+        {% else %}
+          <p class="toc-empty">見出しがありません</p>
+        {% endif %}
+      </div>
+    </aside>
+
+    {# Main content #}
+    <main class="main" id="main-scroll">
+
+      {# SubTree panel #}
+      {% if subtree_data %}
+      <section class="subtree-section">
+        <div class="subtree-header">
+          <span>📂</span>
+          <span class="subtree-label">{{ parent_label }} の構成</span>
+        </div>
+        {{ render_subtree(subtree_data) }}
+      </section>
+      {% endif %}
+
+      {# Markdown content #}
+      <article class="prose" id="prose">
+        {{ html_content | safe }}
+      </article>
+
+    </main>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
